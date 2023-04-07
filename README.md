@@ -28,6 +28,8 @@ However, we recommend trying to install Git using Homebrew first, as it automati
 Copy and paste:
 ---------------
 
+git clone https://github.com/oribalint/subru.git
+
 cd subru
 
 chmod +x subru.command
