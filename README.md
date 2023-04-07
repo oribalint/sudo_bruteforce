@@ -32,4 +32,5 @@ cd subru
 
 chmod +x subru.command
 
+---------------
 Finally, start the application!
