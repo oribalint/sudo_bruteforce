@@ -42,9 +42,9 @@ Copy and paste:
 
 git clone https://github.com/oribalint/subru.git
 
-cd subru
+cd sudo_bruteforce
 
-chmod +x subru.command
+chmod +x sudo_bruteforce.command
 
 ---------------
 Finally, start the application!
