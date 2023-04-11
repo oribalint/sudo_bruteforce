@@ -5,10 +5,9 @@
 
 1. Extract the .zip file and open the terminal. Use the "cd" command to navigate to the extracted folder, or drag the folder into the terminal after typing "cd" and press the enter key.
 
-2. Copy and paste the following command into the terminal:
-"chmod +x sudo_bruteforce.command"
+2. Copy and paste the following command into the terminal: chmod +x sudo_bruteforce.command && chmod +x sudo_bruteforce.sh
 
-3. You can now run the program by double-clicking on it.
+3. You can now run the program: ./sudo_bruteforce.command or ./sudo_bruteforce.sh
 
 # Setup with git clone:
 
