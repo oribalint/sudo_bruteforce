@@ -40,7 +40,7 @@ However, we recommend trying to install Git using Homebrew first, as it automati
 Copy and paste:
 ---------------
 
-git clone https://github.com/oribalint/subru.git
+git clone https://github.com/oribalint/sudo_bruteforce.git
 
 cd sudo_bruteforce
 
