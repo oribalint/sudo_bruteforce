@@ -1,11 +1,11 @@
-# subru
+# sudo_bruteforce
 
 # Setup from .zip:
 
 1. Extract the .zip file and open the terminal. Use the "cd" command to navigate to the extracted folder, or drag the folder into the terminal after typing "cd" and press the enter key.
 
 2. Copy and paste the following command into the terminal:
-"chmod +x subru.command"
+"chmod +x sudo_bruteforce.command"
 
 3. You can now run the program by double-clicking on it.
 
