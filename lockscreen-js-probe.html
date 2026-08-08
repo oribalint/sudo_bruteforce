@@ -46,6 +46,13 @@
 <h2>OS UI escape / privilegizált felület</h2>
 <button onclick="testShare()">9. navigator.share() — OS share sheet</button>
 <button onclick="testWindowOpen()">10. window.open() — kitörés a lockscreen sandboxból</button>
+
+<div style="margin: 10px 0; padding: 10px; background: #1a1a1a; border-radius: 8px;">
+  <div style="font-size: 13px; color: #93c5fd; margin-bottom: 6px;">10b. Session/cookie share teszt — egyedi URL</div>
+  <input id="customUrl" type="text" placeholder="pl. https://mail.google.com"
+    style="width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid #444; background: #000; color: #eee; font-size: 14px; margin-bottom: 8px;">
+  <button onclick="testCustomWindowOpen()" style="margin:0;">Megnyitás window.open()-nel</button>
+</div>
 <button onclick="testFilePicker()">11. &lt;input type=file&gt; — fájlválasztó</button>
 <button onclick="testNotification()">12. Notification API</button>
 <button onclick="testPaymentRequest()">13. Payment Request API</button>
@@ -140,6 +147,14 @@ function testShare() {
 function testWindowOpen() {
   const w = window.open("https://example.com/lockscreen-window-open-test", "_blank");
   log("window.open() eredmény: " + (w ? "ablak objektum visszaadva (lehet popup blocked)" : "null / blokkolva"));
+}
+
+function testCustomWindowOpen() {
+  const url = document.getElementById("customUrl").value.trim();
+  if (!url) return log("Adj meg egy URL-t a mezőben");
+  const w = window.open(url, "_blank");
+  log("Custom window.open(" + url + ") eredmény: " + (w ? "ablak objektum visszaadva" : "null / blokkolva") +
+      " — nézd meg a megnyílt oldalon: bejelentkezett állapotban töltött-e be");
 }
 
 function testFilePicker() {
