@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lockscreen JS API Probe</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 16px; background: #111; color: #eee; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 14px; color: #93c5fd; margin-top: 20px; }
+  p.note { font-size: 13px; color: #aaa; }
+  button {
+    display: block; width: 100%; margin: 6px 0; padding: 12px;
+    font-size: 14px; border: none; border-radius: 8px;
+    background: #2563eb; color: white; text-align: left;
+  }
+  button:active { background: #1d4ed8; }
+  .log { margin-top: 16px; padding: 10px; border-radius: 6px; background: #222;
+         font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+  video { width: 100%; margin-top: 8px; border-radius: 8px; background: #000; }
+</style>
+</head>
+<body>
+<h1>Lockscreen JS API Probe</h1>
+<p class="note">
+  Cél: megnézni, mely böngésző API-k adnak vissza VALÓDI adatot (nem csak UI promptot)
+  a Bixby lockscreen böngészőből, zárolt állapotban. Minden gomb logolja az eredményt
+  (siker + adat, vagy denied/error) a lenti dobozba. Ha bármelyik zárolt állapotban is
+  ad vissza valós adatot user interakció (unlock) nélkül, az komoly finding.
+</p>
+
+<h2>Helyzet / hálózat</h2>
+<button onclick="testGeolocation()">1. Geolocation (getCurrentPosition)</button>
+<button onclick="testWebRTCLeak()">2. WebRTC local IP leak</button>
+<button onclick="testConnection()">3. Network Information API</button>
+
+<h2>Kamera / mikrofon</h2>
+<button onclick="testCamera()">4. getUserMedia video (kamera)</button>
+<button onclick="testMic()">5. getUserMedia audio (mikrofon)</button>
+
+<h2>Eszköz / szenzorok</h2>
+<button onclick="testBattery()">6. Battery Status API</button>
+<button onclick="testOrientation()">7. DeviceOrientation/Motion</button>
+<button onclick="testVibrate()">8. Vibration API</button>
+
+<h2>OS UI escape / privilegizált felület</h2>
+<button onclick="testShare()">9. navigator.share() — OS share sheet</button>
+<button onclick="testWindowOpen()">10. window.open() — kitörés a lockscreen sandboxból</button>
+<button onclick="testFilePicker()">11. &lt;input type=file&gt; — fájlválasztó</button>
+<button onclick="testNotification()">12. Notification API</button>
+<button onclick="testPaymentRequest()">13. Payment Request API</button>
+
+<h2>Perzisztencia zárolás alatt</h2>
+<button onclick="testStorage()">14. localStorage/IndexedDB írás+olvasás</button>
+
+<video id="video" autoplay muted playsinline style="display:none"></video>
+<div class="log" id="log">Válassz egy tesztet.</div>
+
+<script>
+function log(msg) {
+  const el = document.getElementById("log");
+  const ts = new Date().toISOString().split("T")[1].split(".")[0];
+  el.textContent = "[" + ts + "] " + msg + "\n\n" + el.textContent;
+}
+
+function testGeolocation() {
+  if (!navigator.geolocation) return log("Geolocation: API nem elérhető");
+  navigator.geolocation.getCurrentPosition(
+    pos => log("Geolocation SIKER: " + pos.coords.latitude + "," + pos.coords.longitude + " (acc: " + pos.coords.accuracy + "m)"),
+    err => log("Geolocation hiba: " + err.code + " " + err.message),
+    { timeout: 8000 }
+  );
+}
+
+function testWebRTCLeak() {
+  try {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel("");
+    pc.createOffer().then(o => pc.setLocalDescription(o));
+    pc.onicecandidate = e => {
+      if (e.candidate) log("WebRTC candidate: " + e.candidate.candidate);
+      else log("WebRTC: ICE gathering kész, nincs több candidate");
+    };
+    setTimeout(() => { if (pc.iceGatheringState !== "complete") log("WebRTC: timeout, state=" + pc.iceGatheringState); }, 5000);
+  } catch (e) { log("WebRTC hiba: " + e); }
+}
+
+function testConnection() {
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!c) return log("Network Information API nem elérhető");
+  log("Connection: type=" + c.effectiveType + " downlink=" + c.downlink + "Mbps rtt=" + c.rtt + "ms");
+}
+
+function testCamera() {
+  navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+    const v = document.getElementById("video");
+    v.style.display = "block";
+    v.srcObject = stream;
+    log("Kamera SIKER: stream megkapva, " + stream.getVideoTracks().length + " video track");
+  }).catch(err => log("Kamera hiba: " + err.name + " " + err.message));
+}
+
+function testMic() {
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    log("Mikrofon SIKER: stream megkapva, " + stream.getAudioTracks().length + " audio track");
+  }).catch(err => log("Mikrofon hiba: " + err.name + " " + err.message));
+}
+
+function testBattery() {
+  if (!navigator.getBattery) return log("Battery API nem elérhető");
+  navigator.getBattery().then(b => log("Battery: level=" + (b.level*100) + "% charging=" + b.charging));
+}
+
+function testOrientation() {
+  let got = false;
+  window.addEventListener("deviceorientation", e => {
+    if (got) return; got = true;
+    log("DeviceOrientation SIKER: alpha=" + e.alpha + " beta=" + e.beta + " gamma=" + e.gamma);
+  });
+  window.addEventListener("devicemotion", e => {
+    if (got) return; got = true;
+    log("DeviceMotion SIKER: accel=" + JSON.stringify(e.acceleration));
+  });
+  setTimeout(() => { if (!got) log("Orientation/Motion: nincs esemény 5mp alatt"); }, 5000);
+}
+
+function testVibrate() {
+  if (!navigator.vibrate) return log("Vibrate API nem elérhető");
+  const ok = navigator.vibrate([200, 100, 200]);
+  log("Vibrate hívás eredménye: " + ok);
+}
+
+function testShare() {
+  if (!navigator.share) return log("Web Share API nem elérhető");
+  navigator.share({ title: "test", text: "lockscreen share test", url: "https://example.com" })
+    .then(() => log("Share SIKER: OS share sheet megnyílt/elküldve"))
+    .catch(err => log("Share hiba: " + err.name + " " + err.message));
+}
+
+function testWindowOpen() {
+  const w = window.open("https://example.com/lockscreen-window-open-test", "_blank");
+  log("window.open() eredmény: " + (w ? "ablak objektum visszaadva (lehet popup blocked)" : "null / blokkolva"));
+}
+
+function testFilePicker() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.onchange = () => log("File picker SIKER: " + (input.files.length ? input.files[0].name : "nincs fájl kiválasztva"));
+  input.click();
+  log("File picker trigger elküldve (figyeld, megnyílik-e natív fájlböngésző)");
+}
+
+function testNotification() {
+  if (!("Notification" in window)) return log("Notification API nem elérhető");
+  Notification.requestPermission().then(perm => {
+    log("Notification permission: " + perm);
+    if (perm === "granted") {
+      new Notification("Lockscreen test", { body: "ha ez megjelenik zárolva, az komoly finding" });
+      log("Notification SIKER: értesítés kiküldve");
+    }
+  });
+}
+
+function testPaymentRequest() {
+  if (!window.PaymentRequest) return log("Payment Request API nem elérhető");
+  try {
+    const pr = new PaymentRequest(
+      [{ supportedMethods: "basic-card" }],
+      { total: { label: "test", amount: { currency: "USD", value: "0.01" } } }
+    );
+    pr.show().then(() => log("PaymentRequest SIKER: UI megnyílt")).catch(err => log("PaymentRequest hiba: " + err.message));
+  } catch (e) { log("PaymentRequest hiba: " + e); }
+}
+
+function testStorage() {
+  try {
+    localStorage.setItem("lockscreen-test", "written-while-locked-" + Date.now());
+    const v = localStorage.getItem("lockscreen-test");
+    log("localStorage SIKER: írva/olvasva = " + v);
+  } catch (e) { log("localStorage hiba: " + e); }
+}
+</script>
+</body>
+</html>
