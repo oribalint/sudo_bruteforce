@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lockscreen WebView Security Test Suite</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:760px;margin:auto;padding:20px;line-height:1.45}
+.card{border:1px solid #ccc;border-radius:12px;padding:14px;margin:12px 0}
+button,input{font-size:16px;padding:10px;margin:4px 0;box-sizing:border-box} input{width:100%}
+pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f5;padding:10px;border-radius:8px}
+.note{font-size:14px}
+</style>
+</head>
+<body>
+<h1>Android Lockscreen WebView Security Test Suite</h1>
+<div class="card"><b>Cél:</b><p class="note">Saját tesztkészüléken használható, ártalmatlan tesztoldal. Nem gyűjt és nem továbbít jelszót, cookie-t, fájlt vagy személyes adatot.</p></div>
+
+<div class="card">
+<h2>1. Navigation primitive-ek</h2>
+<input id="url" value="https://example.com">
+<br>
+<button onclick="assignNav()">location.assign()</button>
+<button onclick="replaceNav()">location.replace()</button>
+<button onclick="openNav()">window.open()</button>
+<button onclick="anchorNav()">a target=_blank</button>
+<button onclick="formNav()">GET form</button>
+<pre id="navlog">Nincs teszt.</pre>
+</div>
+
+<div class="card">
+<h2>2. Redirect</h2>
+<button onclick="location.href='https://httpbin.org/redirect-to?url=https%3A%2F%2Fexample.com'">HTTPS redirect</button>
+</div>
+
+<div class="card">
+<h2>3. Persistent Web Storage</h2>
+<button onclick="setStorage()">Tesztérték írása</button>
+<button onclick="readStorage()">Tesztérték olvasása</button>
+<button onclick="clearStorage()">Törlés</button>
+<pre id="storage">Nincs teszt.</pre>
+</div>
+
+<div class="card">
+<h2>4. IndexedDB</h2>
+<button onclick="writeIDB()">Írás</button>
+<button onclick="readIDB()">Olvasás</button>
+<pre id="idb">Nincs teszt.</pre>
+</div>
+
+<div class="card">
+<h2>5. Service Worker</h2>
+<button onclick="registerSW()">Regisztráció megkísérlése</button>
+<pre id="sw">Nincs teszt.</pre>
+</div>
+
+<div class="card">
+<h2>6. Download boundary</h2>
+<button onclick="downloadTest()">Ártalmatlan TXT letöltése</button>
+<pre id="download">Nincs teszt.</pre>
+</div>
+
+<div class="card">
+<h2>7. Deep-link / external-app handling</h2>
+<button onclick="location.href='mailto:test@example.invalid?subject=WebView%20test'">mailto:</button>
+<button onclick="location.href='tel:+10000000000'">tel:</button>
+<button onclick="location.href='intent://example.com/#Intent;scheme=https;package=com.android.chrome;end'">intent:// Chrome</button>
+<pre id="deeplink">Figyeld meg, blokkolja-e, megerősítést kér-e, vagy másik app indul.</pre>
+</div>
+
+<div class="card">
+<h2>8. Blob / data URL</h2>
+<button onclick="blobTest()">blob:</button>
+<button onclick="dataTest()">data:</button>
+<pre id="scheme">Nincs teszt.</pre>
+</div>
+
+<div class="card">
+<h2>9. File picker</h2>
+<input type="file" id="fileInput">
+<pre id="filelog">Nincs fájl kiválasztva.</pre>
+</div>
+
+<div class="card">
+<h2>10. Capability snapshot</h2>
+<button onclick="capabilities()">Helyi capability-lista</button>
+<pre id="caps">Nincs teszt.</pre>
+</div>
+
+<script>
+const O=id=>document.getElementById(id), T=()=>O('url').value;
+function assignNav(){O('navlog').textContent='location.assign('+T()+')';location.assign(T())}
+function replaceNav(){O('navlog').textContent='location.replace('+T()+')';location.replace(T())}
+function openNav(){let w=window.open(T(),'_blank');O('navlog').textContent='window.open(): '+(w?'window returned':'blocked/null')}
+function anchorNav(){let a=document.createElement('a');a.href=T();a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();O('navlog').textContent='target=_blank navigation attempted'}
+function formNav(){let f=document.createElement('form');f.method='GET';f.action=T();f.target='_blank';document.body.appendChild(f);f.submit();f.remove();O('navlog').textContent='GET form navigation attempted'}
+
+function setStorage(){localStorage.setItem('lockscreen_test','LOCAL_TEST_VALUE');sessionStorage.setItem('lockscreen_test','SESSION_TEST_VALUE');O('storage').textContent='Tesztértékek elmentve.'}
+function readStorage(){O('storage').textContent='localStorage: '+localStorage.getItem('lockscreen_test')+'\nsessionStorage: '+sessionStorage.getItem('lockscreen_test')}
+function clearStorage(){localStorage.removeItem('lockscreen_test');sessionStorage.removeItem('lockscreen_test');O('storage').textContent='Törölve.'}
+
+function openDB(){return new Promise((res,rej)=>{let r=indexedDB.open('lockscreen-test-db',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function writeIDB(){try{let db=await openDB(),tx=db.transaction('kv','readwrite');tx.objectStore('kv').put('INDEXEDDB_TEST_VALUE','test');tx.oncomplete=()=>O('idb').textContent='IndexedDB érték elmentve.'}catch(e){O('idb').textContent='HIBA: '+e}}
+async function readIDB(){try{let db=await openDB(),tx=db.transaction('kv','readonly'),r=tx.objectStore('kv').get('test');r.onsuccess=()=>O('idb').textContent='IndexedDB: '+r.result;r.onerror=()=>O('idb').textContent='HIBA: '+r.error}catch(e){O('idb').textContent='HIBA: '+e}}
+
+async function registerSW(){if(!('serviceWorker'in navigator)){O('sw').textContent='Service Worker API nem érhető el.';return}try{let src='self.addEventListener("install",e=>self.skipWaiting());self.addEventListener("activate",e=>self.clients.claim());',u=URL.createObjectURL(new Blob([src],{type:'application/javascript'}));let r=await navigator.serviceWorker.register(u);O('sw').textContent='Sikeres regisztráció: '+r.scope}catch(e){O('sw').textContent='Sikertelen/blokkolt: '+e}}
+
+function downloadTest(){let b=new Blob(['LOCKSCREEN WEBVIEW TEST\nNo sensitive data.\n'],{type:'text/plain'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='lockscreen-webview-test.txt';document.body.appendChild(a);a.click();a.remove();O('download').textContent='Letöltési kérés elküldve.'}
+function blobTest(){let u=URL.createObjectURL(new Blob(['<h1>Blob test</h1><p>No sensitive data.</p>'],{type:'text/html'}));window.open(u,'_blank');O('scheme').textContent='blob: navigation attempted.'}
+function dataTest(){window.open('data:text/html,<h1>Data URL test</h1><p>No sensitive data.</p>','_blank');O('scheme').textContent='data: navigation attempted.'}
+O('fileInput').onchange=e=>{let f=e.target.files[0];O('filelog').textContent=f?`Selected: ${f.name} (${f.size} bytes)`:'Nincs fájl.'}
+function capabilities(){let d={userAgent:navigator.userAgent,platform:navigator.platform,language:navigator.language,cookieEnabled:navigator.cookieEnabled,online:navigator.onLine,localStorage:'localStorage'in window,indexedDB:'indexedDB'in window,serviceWorker:'serviceWorker'in navigator,webRTC:'RTCPeerConnection'in window,notification:'Notification'in window,geolocation:'geolocation'in navigator,mediaDevices:'mediaDevices'in navigator,share:'share'in navigator};O('caps').textContent=JSON.stringify(d,null,2)}
+</script>
+</body>
+</html>
