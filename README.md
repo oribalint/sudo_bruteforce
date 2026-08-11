@@ -6,4 +6,4 @@ https://oribalint.github.io/sudo_bruteforce/lockscreen-js-probe.html
 
 https://oribalint.github.io/sudo_bruteforce/lockscreen_webview_security_test.html
 
-https://oribalint.github.io/sudo_bruteforce/lockscreen-poc-index.html
+https://oribalint.github.io/sudo_bruteforce/lockscreen-poc-1.html
