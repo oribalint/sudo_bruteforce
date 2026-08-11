@@ -37,6 +37,7 @@ invoked.</p>
 <button onclick="testEnumerateGlobals()">Enumerate window globals</button>
 <button onclick="testProbeBridge('AndroidBridge')">Deep-probe window.AndroidBridge (read-only)</button>
 <button onclick="testProbeBridge('android')">Deep-probe window.android (read-only)</button>
+<button onclick="testProbeNested()">Deep-probe window.android.webview (read-only)</button>
 
 <div class="log" id="log">Select a test above. Results are logged below (newest first).</div>
 
@@ -61,7 +62,16 @@ function testEnumerateGlobals() {
 // deliberately NOT done here; this only reports candidate method NAMES for
 // manual review before anything is ever invoked.
 function testProbeBridge(name) {
-  const obj = window[name];
+  probeObject(name, window[name]);
+}
+
+function testProbeNested() {
+  const parent = window.android;
+  if (parent === undefined) return log("window.android: undefined — run the android probe first");
+  probeObject("window.android.webview", parent.webview);
+}
+
+function probeObject(name, obj) {
   if (obj === undefined) return log(name + ": undefined — not present in this context");
   if (obj === null) return log(name + ": null");
 
