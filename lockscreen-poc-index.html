@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bixby Lockscreen Browser PoC</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 16px; background: #111; color: #eee; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 14px; color: #93c5fd; margin-top: 20px; }
+  p.note { font-size: 13px; color: #aaa; }
+  button {
+    display: block; width: 100%; margin: 6px 0; padding: 12px;
+    font-size: 14px; border: none; border-radius: 8px;
+    background: #2563eb; color: white; text-align: left;
+  }
+  button:active { background: #1d4ed8; }
+  .log { margin-top: 16px; padding: 10px; border-radius: 6px; background: #222;
+         font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<h1>Bixby Lockscreen Browser — Native JS Bridge Probe</h1>
+<p class="note">
+  Reach this page via a Bixby search result while the device is locked (typing this URL directly
+  into the Bixby search bar triggers an auth prompt and does not reproduce the delivery bug — see
+  the companion lockscreen-bypass report for that part, not duplicated here).
+</p>
+
+<h2>Native JS bridge (needs testing — AndroidBridge/android found, capability unknown)</h2>
+<p class="note">Window global enumeration already found two non-standard globals —
+<code>AndroidBridge</code> and <code>android</code> — consistent with an
+addJavascriptInterface()-style native bridge. What they expose is not yet known. The deep-probe
+buttons are read-only reflection only (getOwnPropertyNames, for...in, prototype inspection,
+JSON.stringify, typeof-only existence checks against common bridge method names) — nothing is
+invoked.</p>
+<button onclick="testEnumerateGlobals()">Enumerate window globals</button>
+<button onclick="testProbeBridge('AndroidBridge')">Deep-probe window.AndroidBridge (read-only)</button>
+<button onclick="testProbeBridge('android')">Deep-probe window.android (read-only)</button>
+
+<div class="log" id="log">Select a test above. Results are logged below (newest first).</div>
+
+<script>
+function log(msg) {
+  const el = document.getElementById("log");
+  const ts = new Date().toISOString().split("T")[1].split(".")[0];
+  el.textContent = "[" + ts + "] " + msg + "\n\n" + el.textContent;
+}
+
+function testEnumerateGlobals() {
+  const keys = Object.getOwnPropertyNames(window).sort();
+  const suspicious = keys.filter(k => /android|bixby|native|bridge|jsinterface|webview|samsung|jsi\b|inject/i.test(k));
+  log("window global count: " + keys.length +
+      "\nSuspicious-named globals: " + (suspicious.length ? suspicious.join(", ") : "none matched pattern") +
+      "\nFull list (first 250, review manually for anything unexpected):\n" + keys.slice(0, 250).join(", "));
+}
+
+// Read-only reflection only — does NOT call any method on the bridge object,
+// only inspects what's visible via standard JS reflection APIs. Calling an
+// unknown native method blindly could have side effects, so that is
+// deliberately NOT done here; this only reports candidate method NAMES for
+// manual review before anything is ever invoked.
+function testProbeBridge(name) {
+  const obj = window[name];
+  if (obj === undefined) return log(name + ": undefined — not present in this context");
+  if (obj === null) return log(name + ": null");
+
+  const lines = [name + " exists. typeof=" + typeof obj];
+
+  try { lines.push("String(obj)=" + String(obj)); } catch (e) { lines.push("String(obj) threw: " + e); }
+
+  try {
+    const ownProps = Object.getOwnPropertyNames(obj);
+    lines.push("Object.getOwnPropertyNames: [" + ownProps.join(", ") + "] (count=" + ownProps.length + ")");
+  } catch (e) { lines.push("getOwnPropertyNames threw: " + e); }
+
+  try {
+    const forInProps = [];
+    for (const k in obj) forInProps.push(k);
+    lines.push("for...in enumeration: [" + forInProps.join(", ") + "] (count=" + forInProps.length + ")");
+  } catch (e) { lines.push("for...in threw: " + e); }
+
+  try {
+    const proto = Object.getPrototypeOf(obj);
+    lines.push("prototype: " + (proto ? (proto.constructor ? proto.constructor.name : String(proto)) : "null"));
+    if (proto) {
+      const protoProps = Object.getOwnPropertyNames(proto);
+      lines.push("prototype own props: [" + protoProps.join(", ") + "]");
+    }
+  } catch (e) { lines.push("getPrototypeOf threw: " + e); }
+
+  try { lines.push("JSON.stringify: " + JSON.stringify(obj)); }
+  catch (e) { lines.push("JSON.stringify threw: " + e); }
+
+  // Probe a small set of common addJavascriptInterface-style method NAMES
+  // (existence check only via typeof — never invoked) often seen in native
+  // bridges: postMessage/send-style, data getters, and lifecycle hooks.
+  const candidateNames = [
+    "postMessage", "send", "sendMessage", "call", "invoke", "getData", "getToken",
+    "getUserInfo", "getDeviceId", "getSessionId", "getCookie", "getUrl", "close",
+    "showToast", "onMessage", "receive", "exec", "run", "eval"
+  ];
+  const present = candidateNames.filter(n => typeof obj[n] !== "undefined");
+  lines.push("Candidate method names present (typeof !== undefined): [" + present.join(", ") + "]");
+
+  log(lines.join("\n"));
+}
+</script>
+</body>
+</html>
