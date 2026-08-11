@@ -39,6 +39,15 @@ invoked.</p>
 <button onclick="testProbeBridge('android')">Deep-probe window.android (read-only)</button>
 <button onclick="testProbeNested()">Deep-probe window.android.webview (read-only)</button>
 
+<h2>First live invocation — onSelectClicked() with NO arguments</h2>
+<p class="note">This is the first call that actually invokes the native bridge instead of just
+reflecting on it. Called with zero arguments, wrapped in try/catch, so a type/argument-count
+mismatch just surfaces as a caught exception here — the goal is to read the exception message
+(Java bridge errors often state the expected signature) or the return value, not to trigger any
+particular native behavior. Nothing beyond this single no-arg call is attempted without discussing
+the result first.</p>
+<button onclick="testInvokeNoArgs()">Call AndroidBridge.onSelectClicked() — no args</button>
+
 <div class="log" id="log">Select a test above. Results are logged below (newest first).</div>
 
 <script>
@@ -114,6 +123,22 @@ function probeObject(name, obj) {
   lines.push("Candidate method names present (typeof !== undefined): [" + present.join(", ") + "]");
 
   log(lines.join("\n"));
+}
+
+// FIRST LIVE INVOCATION. No-argument call, wrapped in try/catch. The point is
+// to read whatever comes back (return value or exception message) — NOT to
+// assume or target any particular native behavior. Do not extend this to
+// guessed arguments without reviewing this result first.
+function testInvokeNoArgs() {
+  if (typeof window.AndroidBridge === "undefined" || typeof window.AndroidBridge.onSelectClicked !== "function") {
+    return log("AndroidBridge.onSelectClicked not callable in this context (undefined or not a function)");
+  }
+  try {
+    const result = window.AndroidBridge.onSelectClicked();
+    log("onSelectClicked() returned: " + JSON.stringify(result) + " (typeof=" + typeof result + ")");
+  } catch (e) {
+    log("onSelectClicked() threw: " + e + "\nFull error: " + (e && e.stack ? e.stack : String(e)));
+  }
 }
 </script>
 </body>
